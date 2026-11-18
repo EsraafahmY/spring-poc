@@ -1,0 +1,60 @@
+# ---------------------------------------------------------------
+# Image settings. Jenkins bumps global.imageTag on every build,
+# commits it to Git, and ArgoCD syncs the change to the cluster.
+# ---------------------------------------------------------------
+global:
+  imageRegistry: docker.io/your-dockerhub-user
+  imageTag: "1.0.0"
+  imagePullPolicy: IfNotPresent
+
+# Users for Spring Security + DB credentials (stored in a K8s Secret)
+secrets:
+  adminPassword: admin123
+  userPassword: user123
+  dbUser: poc
+  dbPassword: poc
+
+postgres:
+  enabled: true
+  image: postgres:16-alpine
+  databases: [productdb, orderdb]
+
+services:
+  config-server:
+    port: 8888
+    replicas: 1
+    isConfigClient: false
+    resources: &res
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { memory: 512Mi }
+
+  discovery-server:
+    port: 8761
+    replicas: 1
+    isConfigClient: false
+    resources: *res
+
+  api-gateway:
+    port: 8080
+    replicas: 1
+    isConfigClient: true
+    resources: *res
+
+  product-service:
+    port: 8081
+    replicas: 2            # 2 replicas -> Eureka + client-side load balancing in action
+    isConfigClient: true
+    database: productdb
+    resources: *res
+
+  order-service:
+    port: 8082
+    replicas: 1
+    isConfigClient: true
+    database: orderdb
+    resources: *res
+
+ingress:
+  enabled: true
+  className: nginx
+  host: spring-poc.local     # add "<minikube ip> spring-poc.local" to /etc/hosts

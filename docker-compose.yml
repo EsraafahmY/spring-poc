@@ -1,0 +1,68 @@
+# Run the whole POC locally:  docker compose up --build
+x-client-env: &client-env
+  CONFIG_SERVER_URL: http://config-server:8888
+  EUREKA_URL: http://discovery-server:8761/eureka
+  SPRING_CLOUD_CONFIG_FAIL_FAST: "true"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: poc
+      POSTGRES_PASSWORD: poc
+      POSTGRES_DB: productdb
+    volumes:
+      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "poc"]
+      interval: 5s
+      retries: 10
+
+  config-server:
+    build: { context: ., args: { MODULE: config-server } }
+    image: spring-poc/config-server:local
+    ports: ["8888:8888"]
+    healthcheck: &hc
+      test: ["CMD", "wget", "-qO-", "http://localhost:8888/actuator/health"]
+      interval: 5s
+      retries: 30
+
+  discovery-server:
+    build: { context: ., args: { MODULE: discovery-server } }
+    image: spring-poc/discovery-server:local
+    ports: ["8761:8761"]
+    healthcheck:
+      <<: *hc
+      test: ["CMD", "wget", "-qO-", "http://localhost:8761/actuator/health"]
+
+  product-service:
+    build: { context: ., args: { MODULE: product-service } }
+    image: spring-poc/product-service:local
+    environment:
+      <<: *client-env
+      DB_URL: jdbc:postgresql://postgres:5432/productdb
+      DB_USER: poc
+      DB_PASSWORD: poc
+    depends_on: &deps
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+
+  order-service:
+    build: { context: ., args: { MODULE: order-service } }
+    image: spring-poc/order-service:local
+    environment:
+      <<: *client-env
+      DB_URL: jdbc:postgresql://postgres:5432/orderdb
+      DB_USER: poc
+      DB_PASSWORD: poc
+    depends_on: *deps
+
+  api-gateway:
+    build: { context: ., args: { MODULE: api-gateway } }
+    image: spring-poc/api-gateway:local
+    environment: *client-env
+    ports: ["8080:8080"]
+    depends_on:
+      config-server: { condition: service_healthy }
+      discovery-server: { condition: service_healthy }

@@ -1,0 +1,16 @@
+server:
+  port: 8082
+spring:
+  jpa:
+    hibernate.ddl-auto: update
+    open-in-view: false
+  datasource:
+    url: ${DB_URL:jdbc:h2:mem:orderdb}
+    username: ${DB_USER:sa}
+    password: ${DB_PASSWORD:}
+
+# Business configuration bound to OrderProperties (@ConfigurationProperties)
+poc:
+  order:
+    discount-percent: 10        # 0 = no discount -> NoDiscountPolicy bean is used
+    max-quantity-per-order: 20

@@ -1,0 +1,25 @@
+# ArgoCD watches this Git repo; whenever helm/spring-poc changes (e.g. Jenkins bumps
+# global.imageTag) it renders the chart and syncs the cluster to match Git (GitOps).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: spring-poc
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/your-org/spring-poc.git
+    targetRevision: main
+    path: helm/spring-poc
+    helm:
+      valueFiles:
+        - values.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: spring-poc
+  syncPolicy:
+    automated:
+      prune: true       # delete resources removed from Git
+      selfHeal: true    # undo manual changes made with kubectl
+    syncOptions:
+      - CreateNamespace=true

@@ -1,0 +1,84 @@
+{{- /* One Deployment + one Service per microservice, generated from .Values.services */ -}}
+{{- $root := . -}}
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+    {{- include "spring-poc.labels" $root | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas }}
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      {{- if $svc.isConfigClient }}
+      initContainers:
+        # wait until Config Server and Eureka are up before starting the Spring app
+        - name: wait-for-platform
+          image: busybox:1.36
+          command: ["sh", "-c", "until wget -qO- http://config-server:8888/actuator/health && wget -qO- http://discovery-server:8761/actuator/health; do echo waiting; sleep 3; done"]
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: "{{ $root.Values.global.imageRegistry }}/{{ $name }}:{{ $root.Values.global.imageTag }}"
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+          env:
+            {{- if $svc.isConfigClient }}
+            - name: CONFIG_SERVER_URL
+              value: http://config-server:8888
+            - name: SPRING_CLOUD_CONFIG_FAIL_FAST
+              value: "true"
+            - name: EUREKA_URL
+              value: http://discovery-server:8761/eureka
+            - name: ADMIN_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $root.Release.Name }}-secrets, key: ADMIN_PASSWORD } }
+            - name: USER_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $root.Release.Name }}-secrets, key: USER_PASSWORD } }
+            {{- end }}
+            {{- if and $svc.database $root.Values.postgres.enabled }}
+            - name: DB_URL
+              value: jdbc:postgresql://postgres:5432/{{ $svc.database }}
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: {{ $root.Release.Name }}-secrets, key: DB_USER } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ $root.Release.Name }}-secrets, key: DB_PASSWORD } }
+            {{- end }}
+          # Spring Boot Actuator exposes K8s probe endpoints
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 10
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 5
+          resources: {{- toYaml $svc.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    app: {{ $name }}
+    {{- include "spring-poc.labels" $root | nindent 4 }}
+spec:
+  selector:
+    app: {{ $name }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+{{- end }}

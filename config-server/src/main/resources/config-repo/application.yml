@@ -1,0 +1,23 @@
+# Shared by every service that asks the Config Server for its configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka}
+    registry-fetch-interval-seconds: 5   # POC: pick up new instances quickly (default 30)
+  instance:
+    prefer-ip-address: true
+
+management:
+  endpoints.web.exposure.include: health,info,refresh
+  endpoint.health.probes.enabled: true
+
+# Users for Spring Security (HTTP Basic). In production these come from a K8s Secret / IdP.
+poc:
+  security:
+    users:
+      - username: admin
+        password: ${ADMIN_PASSWORD:admin123}
+        roles: [ADMIN, USER]
+      - username: user
+        password: ${USER_PASSWORD:user123}
+        roles: [USER]

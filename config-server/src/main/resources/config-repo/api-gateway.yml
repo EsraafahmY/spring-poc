@@ -1,0 +1,14 @@
+server:
+  port: 8080
+spring:
+  cloud:
+    gateway:
+      routes:
+        - id: product-service
+          uri: lb://product-service      # "lb://" = resolve via Eureka + client-side load balancing
+          predicates:
+            - Path=/api/products/**
+        - id: order-service
+          uri: lb://order-service
+          predicates:
+            - Path=/api/orders/**
